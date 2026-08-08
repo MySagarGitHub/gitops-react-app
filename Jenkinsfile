@@ -26,14 +26,14 @@ pipeline {
         stage("Prepare Variables") {
             steps {
                 script {
-                    env.IMAGE_TAG = sh(
-                        script: "git rev-parse --short HEAD",
+                    env.IMAGE_TAG = bat(
+                        script: "git rev-parse --batort HEAD",
                         returnStdout: true
                     ).trim()
 
                     env.FULL_IMAGE = "${env.IMAGE_NAME}:${env.IMAGE_TAG}"
 
-                    env.BUILD_TIME = sh(
+                    env.BUILD_TIME = bat(
                         script: 'date -u +"%Y-%m-%dT%H:%M:%SZ"',
                         returnStdout: true
                     ).trim()
@@ -47,42 +47,42 @@ pipeline {
 
         stage("Install Dependencies") {
             steps {
-                sh "npm ci"
+                bat "npm ci"
             }
         }
 
         stage("Secret Detection") {
             steps {
                 echo "Running Gitleaks secret detection"
-                sh "gitleaks detect --source . --config security/gitleaks.toml --no-git --verbose"
+                bat "gitleaks detect --source . --config security/gitleaks.toml --no-git --verbose"
             }
         }
 
         stage("Dependency Audit") {
             steps {
                 echo "Running npm dependency audit"
-                sh "npm audit --omit=dev --audit-level=high"
+                bat "npm audit --omit=dev --audit-level=high"
             }
         }
 
         stage("Lint") {
             steps {
                 echo "Running ESLint"
-                sh "npm run lint"
+                bat "npm run lint"
             }
         }
 
         stage("SAST Scan") {
             steps {
                 echo "Running Semgrep SAST scan"
-                sh "semgrep scan --config auto --error"
+                bat "semgrep scan --config auto --error"
             }
         }
 
         stage("Unit Tests") {
             steps {
                 echo "Running unit tests"
-                sh "npm test"
+                bat "npm test"
             }
         }
 
@@ -90,7 +90,7 @@ pipeline {
             steps {
                 echo "Building Docker image"
 
-                sh '''
+                bat '''
                     docker build \
                         --build-arg VITE_APP_VERSION=$IMAGE_TAG \
                         --build-arg VITE_BUILD_NUMBER=$BUILD_NUMBER \
@@ -105,7 +105,7 @@ pipeline {
             steps {
                 echo "Running Trivy image scan"
 
-                sh '''
+                bat '''
                     trivy image \
                         --exit-code 1 \
                         --severity CRITICAL,HIGH \
@@ -115,9 +115,9 @@ pipeline {
             }
         }
 
-        stage("Push Docker Image") {
+        stage("Pubat Docker Image") {
             steps {
-                echo "Pushing image to Docker Hub"
+                echo "Pubating image to Docker Hub"
 
                 withCredentials([
                     usernamePassword(
@@ -126,9 +126,9 @@ pipeline {
                         passwordVariable: "DOCKER_PASS"
                     )
                 ]) {
-                    sh '''
+                    bat '''
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        docker push $FULL_IMAGE
+                        docker pubat $FULL_IMAGE
                         docker logout
                     '''
                 }
@@ -146,7 +146,7 @@ pipeline {
                         passwordVariable: "GIT_TOKEN"
                     )
                 ]) {
-                    sh '''
+                    bat '''
                         set -e
 
                         echo "Cloning GitOps repo"
@@ -164,7 +164,7 @@ pipeline {
                         if [ -n "$(git status --porcelain)" ]; then
                             git add deployment.yaml
                             git commit -m "Update react-cicd-demo image to $IMAGE_TAG [skip ci]"
-                            git push origin main
+                            git pubat origin main
                         else
                             echo "No GitOps changes needed"
                         fi
@@ -178,7 +178,7 @@ pipeline {
         always {
             echo "Cleaning workspace"
 
-            sh '''
+            bat '''
                 docker rmi $FULL_IMAGE || true
             '''
 
