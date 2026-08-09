@@ -26,14 +26,14 @@ pipeline {
         stage("Prepare Variables") {
             steps {
                 script {
-                    env.IMAGE_TAG = bat(
-                        script: "git rev-parse --batort HEAD",
+                    env.IMAGE_TAG = sh(
+                        script: "git rev-parse --short HEAD",
                         returnStdout: true
                     ).trim()
 
                     env.FULL_IMAGE = "${env.IMAGE_NAME}:${env.IMAGE_TAG}"
 
-                    env.BUILD_TIME = bat(
+                    env.BUILD_TIME = sh(
                         script: 'date -u +"%Y-%m-%dT%H:%M:%SZ"',
                         returnStdout: true
                     ).trim()
@@ -47,42 +47,42 @@ pipeline {
 
         stage("Install Dependencies") {
             steps {
-                bat "npm ci"
+                sh "npm ci"
             }
         }
 
         stage("Secret Detection") {
             steps {
                 echo "Running Gitleaks secret detection"
-                bat "gitleaks detect --source . --config security/gitleaks.toml --no-git --verbose"
+                sh "gitleaks detect --source . --config security/gitleaks.toml --no-git --verbose"
             }
         }
 
         stage("Dependency Audit") {
             steps {
                 echo "Running npm dependency audit"
-                bat "npm audit --omit=dev --audit-level=high"
+                sh "npm audit --omit=dev --audit-level=high"
             }
         }
 
         stage("Lint") {
             steps {
                 echo "Running ESLint"
-                bat "npm run lint"
+                sh "npm run lint"
             }
         }
 
         stage("SAST Scan") {
             steps {
                 echo "Running Semgrep SAST scan"
-                bat "semgrep scan --config auto --error"
+                sh "semgrep scan --config auto --error"
             }
         }
 
         stage("Unit Tests") {
             steps {
                 echo "Running unit tests"
-                bat "npm test"
+                sh "npm test"
             }
         }
 
@@ -90,7 +90,7 @@ pipeline {
             steps {
                 echo "Building Docker image"
 
-                bat '''
+                sh '''
                     docker build \
                         --build-arg VITE_APP_VERSION=$IMAGE_TAG \
                         --build-arg VITE_BUILD_NUMBER=$BUILD_NUMBER \
@@ -105,7 +105,7 @@ pipeline {
             steps {
                 echo "Running Trivy image scan"
 
-                bat '''
+                sh '''
                     trivy image \
                         --exit-code 1 \
                         --severity CRITICAL,HIGH \
@@ -115,9 +115,9 @@ pipeline {
             }
         }
 
-        stage("Pubat Docker Image") {
+        stage("Push Docker Image") {
             steps {
-                echo "Pubating image to Docker Hub"
+                echo "Pushing image to Docker Hub"
 
                 withCredentials([
                     usernamePassword(
@@ -126,9 +126,9 @@ pipeline {
                         passwordVariable: "DOCKER_PASS"
                     )
                 ]) {
-                    bat '''
+                    sh '''
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        docker pubat $FULL_IMAGE
+                        docker push $FULL_IMAGE
                         docker logout
                     '''
                 }
@@ -146,12 +146,12 @@ pipeline {
                         passwordVariable: "GIT_TOKEN"
                     )
                 ]) {
-                    bat '''
+                    sh '''
                         set -e
 
                         echo "Cloning GitOps repo"
                         rm -rf gitops-react-manifests
-                        git clone https://$GIT_USER:$GIT_TOKEN@github.com/MySagarGithub/Gitops-manifests.git
+                        git clone https://$GIT_USER:$GIT_TOKEN@github.com/MySagarGithub/Gitops-manifests.git gitops-react-manifests
 
                         cd gitops-react-manifests/environments/dev
 
@@ -164,7 +164,7 @@ pipeline {
                         if [ -n "$(git status --porcelain)" ]; then
                             git add deployment.yaml
                             git commit -m "Update react-cicd-demo image to $IMAGE_TAG [skip ci]"
-                            git pubat origin main
+                            git push origin main
                         else
                             echo "No GitOps changes needed"
                         fi
