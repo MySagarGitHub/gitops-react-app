@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "oxlint",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "security:gitleaks": "gitleaks detect --source . --config security/gitleaks.toml --no-git --verbose",
+    "security:audit": "npm audit --omit=dev --audit-level=high",
+    "security:sast": "semgrep scan --config auto --error"
   },
   "dependencies": {
     "react": "^19.2.8",

@@ -1,8 +1,10 @@
-title = "gitleaks config"
+title = "Gitleaks Config"
 
 [allowlist]
-description = "Global allowlist"
-paths = [
-  '''node_modules''',
-  '''dist'''
-]
+  description = "Global allowlist"
+  paths = [
+    '''node_modules''',
+    '''dist''',
+    '''package-lock\.json''',
+    '''\.git'''
+  ]
