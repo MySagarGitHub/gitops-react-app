@@ -70,12 +70,13 @@ pipeline {
             }
         }
 
-        stage("SAST Scan") {
+        stage('SAST - Semgrep') {
             steps {
-                echo "Running Semgrep SAST scan"
-                bat "semgrep scan --config auto --error"
+                
+                bat "docker run --rm -v \"%WORKSPACE%\\project:/src\" semgrep/semgrep semgrep scan --config=p/nodejs --config=p/jwt --config=p/secrets --error /src"
             }
         }
+
 
         stage("Unit Tests") {
             steps {
