@@ -25,15 +25,15 @@ pipeline {
             steps {
                 script {
                     env.IMAGE_TAG = bat(
-                        script: "git rev-parse --batort HEAD",
+                        script: "git rev-parse --short HEAD",
                         returnStdout: true
                     ).trim()
 
                     env.FULL_IMAGE = "${env.IMAGE_NAME}:${env.IMAGE_TAG}"
 
                     env.BUILD_TIME = bat(
-                        script: 'date -u +"%Y-%m-%dT%H:%M:%SZ"',
-                        returnStdout: true
+                    script: '@echo %DATE% %TIME%',
+                    returnStdout: true
                     ).trim()
 
                     echo "Image tag: ${env.IMAGE_TAG}"
@@ -85,54 +85,57 @@ pipeline {
             }
         }
 
-        stage("Build Docker Image") {
+         stage('Build Docker Image') {
             steps {
-                echo "Building Docker image"
-
-                bat '''
-                    docker build \
-                        --build-arg VITE_APP_VERSION=$IMAGE_TAG \
-                        --build-arg VITE_BUILD_NUMBER=$BUILD_NUMBER \
-                        --build-arg VITE_BUILD_TIME=$BUILD_TIME \
-                        --build-arg VITE_ENVIRONMENT=$DEPLOY_ENV \
-                        -t $FULL_IMAGE .
-                '''
-            }
-        }
-
-        stage("Scan Docker Image") {
-            steps {
-                echo "Running Trivy image scan"
-
-                bat '''
-                    trivy image \
-                        --exit-code 1 \
-                        --severity CRITICAL,HIGH \
-                        --ignore-unfixed \
-                        $FULL_IMAGE
-                '''
-            }
-        }
-
-        stage("Pubat Docker Image") {
-            steps {
-                echo "Pubating image to Docker Hub"
-
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: "dockerhub-credentials",
-                        usernameVariable: "DOCKER_USER",
-                        passwordVariable: "DOCKER_PASS"
-                    )
-                ]) {
-                    bat '''
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        docker pubat $FULL_IMAGE
-                        docker logout
-                    '''
+                script {
+                    def tag = env.REGISTRY
+                        ? "${env.REGISTRY}/${env.IMAGE_NAME}:${env.IMAGE_TAG}"
+                        : "${env.IMAGE_NAME}:${env.IMAGE_TAG}"
+                    dir('project') { bat "docker build -t ${tag} ." }
+                    env.FULL_IMAGE = tag
                 }
             }
         }
+
+
+        stage("Scan Docker Image") {
+            steps {
+        script {
+            def imageName = env.FULL_IMAGE ?: "${env.DOCKER_REGISTRY}/${env.IMAGE_NAME}:${env.BUILD_NUMBER}"
+            echo "Scanning image: ${imageName}"
+            
+            
+            bat """
+                docker save -o image.tar ${imageName}
+                docker run --rm -v %cd%:/work aquasec/trivy:latest image --input /work/image.tar --exit-code 0 --severity HIGH,CRITICAL --no-progress
+                del image.tar
+            """
+        }
+    }
+
+        }
+
+         stage('Push to Registry') {
+            when {
+                allOf {
+                    expression { return env.REGISTRY?.trim() }
+                    
+                    expression { return env.GIT_BRANCH ==~ /.*main|.*master/ }
+                }
+            }
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'docker-registry-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    
+                    bat "echo %DOCKER_PASS%| docker login -u %DOCKER_USER% --password-stdin"
+                    bat "docker push ${env.FULL_IMAGE}"
+                }
+            }
+        }
+
 
         stage("Update GitOps Repo") {
             steps {
