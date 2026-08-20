@@ -31,6 +31,7 @@ pipeline {
 
                     env.FULL_IMAGE = "${env.IMAGE_NAME}:${env.IMAGE_TAG}"
 
+
                     env.BUILD_TIME = bat(
                     script: '@echo %DATE% %TIME%',
                     returnStdout: true
