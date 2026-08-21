@@ -50,12 +50,13 @@ pipeline {
             }
         }
 
-        stage("Secret Detection") {
+       stage('Secret Scanning') {
             steps {
-                echo "Running Gitleaks secret detection"
-                bat "gitleaks detect --source . --config security/gitleaks.toml --no-git --verbose"
+               
+                bat "docker run --rm -v \"%WORKSPACE%\\project:/path\" zricethezav/gitleaks:latest detect --source=/path --no-git --exit-code=1"
             }
         }
+
 
         stage("Dependency Audit") {
             steps {
@@ -64,17 +65,16 @@ pipeline {
             }
         }
 
-        stage("Lint") {
+        stage('Lint') {
             steps {
-                echo "Running ESLint"
-                bat "npm run lint"
+                dir('app') { bat 'npm run lint --if-present' }
             }
         }
 
         stage('SAST - Semgrep') {
             steps {
                 
-                bat "docker run --rm -v \"%WORKSPACE%\\project:/src\" semgrep/semgrep semgrep scan --config=p/nodejs --config=p/jwt --config=p/secrets --error /src"
+                bat "docker run --rm -v \"%WORKSPACE%\\app:/src\" semgrep/semgrep semgrep scan --config=p/nodejs --config=p/jwt --config=p/secrets --error /src"
             }
         }
 
@@ -92,7 +92,7 @@ pipeline {
                     def tag = env.REGISTRY
                         ? "${env.REGISTRY}/${env.IMAGE_NAME}:${env.IMAGE_TAG}"
                         : "${env.IMAGE_NAME}:${env.IMAGE_TAG}"
-                    dir('project') { bat "docker build -t ${tag} ." }
+                    dir('app') { bat "docker build -t ${tag} ." }
                     env.FULL_IMAGE = tag
                 }
             }
