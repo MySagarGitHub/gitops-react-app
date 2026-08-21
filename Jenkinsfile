@@ -50,12 +50,13 @@ pipeline {
             }
         }
 
-        stage("Secret Detection") {
+       stage('Secret Scanning') {
             steps {
-                echo "Running Gitleaks secret detection"
-                bat "gitleaks detect --source . --config security/gitleaks.toml --no-git --verbose"
+               
+                bat "docker run --rm -v \"%WORKSPACE%\\project:/path\" zricethezav/gitleaks:latest detect --source=/path --no-git --exit-code=1"
             }
         }
+
 
         stage("Dependency Audit") {
             steps {
