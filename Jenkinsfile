@@ -162,12 +162,12 @@ pipeline {
                         sed -i "s|image: .*|image: $FULL_IMAGE|g" deployment.yaml
 
                         git config user.name "Jenkins"
-                        git config user.email "jenkins@example.com"
+                        git config user.email "pandaysagar2004@gmail.com"
 
                         if [ -n "$(git status --porcelain)" ]; then
                             git add deployment.yaml
                             git commit -m "Update react-cicd-demo image to $IMAGE_TAG [skip ci]"
-                            git pubat origin main
+                            git push origin main
                         else
                             echo "No GitOps changes needed"
                         fi
