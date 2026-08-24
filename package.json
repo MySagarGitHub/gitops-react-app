@@ -8,7 +8,7 @@
     "build": "vite build",
     "test": "vitest run",
     "preview": "vite preview",
-    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "lint": "oxlint",
     "security:gitleaks": "gitleaks detect --source . --config security/gitleaks.toml --no-git --verbose",
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "security:sast": "semgrep scan --config auto --error"
@@ -18,9 +18,12 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
+    "jsdom": "^29.1.1",
     "oxlint": "^1.75.0",
     "vite": "^8.2.0",
     "vitest": "^4.1.10"
