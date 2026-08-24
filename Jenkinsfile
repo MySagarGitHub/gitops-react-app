@@ -5,9 +5,6 @@ pipeline {
         APP_NAME       = "react-cicd-demo"
         REGISTRY       = "sagar019"
         IMAGE_NAME     = "${REGISTRY}/${APP_NAME}"
-        IMAGE_TAG      = ""
-        FULL_IMAGE     = ""
-        BUILD_TIME     = ""
         DEPLOY_ENV     = "dev"
         GITOPS_REPO    = "https://github.com/MySagarGithub/gitops-react-manifests.git"
         GITOPS_BRANCH  = "main"
@@ -24,18 +21,21 @@ pipeline {
         stage("Prepare Variables") {
             steps {
                 script {
-                    env.IMAGE_TAG = bat(
-                        script: "git rev-parse --short HEAD",
+                    def gitCommit = bat(
+                        script: "@git rev-parse --short HEAD",
                         returnStdout: true
                     ).trim()
+                    
+                    def commitHash = gitCommit.tokenize("\r\n")[-1].trim()
 
+                    env.IMAGE_TAG = commitHash
                     env.FULL_IMAGE = "${env.IMAGE_NAME}:${env.IMAGE_TAG}"
 
-
-                    env.BUILD_TIME = bat(
-                    script: '@echo %DATE% %TIME%',
-                    returnStdout: true
+                    def dateStr = bat(
+                        script: "@echo %DATE% %TIME%",
+                        returnStdout: true
                     ).trim()
+                    env.BUILD_TIME = dateStr.tokenize("\r\n")[-1].trim()
 
                     echo "Image tag: ${env.IMAGE_TAG}"
                     echo "Full image: ${env.FULL_IMAGE}"
@@ -46,82 +46,78 @@ pipeline {
 
         stage("Install Dependencies") {
             steps {
-                bat "npm ci"
+                dir('app') {
+                    bat "npm ci"
+                }
             }
         }
 
-       stage('Secret Scanning') {
+        stage('Secret Scanning') {
             steps {
-               
-                bat "docker run --rm -v \"%WORKSPACE%\\project:/path\" zricethezav/gitleaks:latest detect --source=/path --no-git --exit-code=1"
+                bat "docker run --rm -v \"%WORKSPACE%\\app:/path\" zricethezav/gitleaks:latest detect --source=/path --no-git --exit-code=1"
             }
         }
-
 
         stage("Dependency Audit") {
             steps {
                 echo "Running npm dependency audit"
-                bat "npm audit --omit=dev --audit-level=high"
+                dir('app') {
+                    bat "npm audit --omit=dev --audit-level=high"
+                }
             }
         }
 
         stage('Lint') {
             steps {
-                dir('app') { bat 'npm run lint --if-present' }
+                dir('app') {
+                    bat 'npm run lint --if-present'
+                }
             }
         }
 
         stage('SAST - Semgrep') {
             steps {
-                
                 bat "docker run --rm -v \"%WORKSPACE%\\app:/src\" semgrep/semgrep semgrep scan --config=p/nodejs --config=p/jwt --config=p/secrets --error /src"
             }
         }
 
-
         stage("Unit Tests") {
             steps {
                 echo "Running unit tests"
-                bat "npm test"
-            }
-        }
-
-         stage('Build Docker Image') {
-            steps {
-                script {
-                    def tag = env.REGISTRY
-                        ? "${env.REGISTRY}/${env.IMAGE_NAME}:${env.IMAGE_TAG}"
-                        : "${env.IMAGE_NAME}:${env.IMAGE_TAG}"
-                    dir('app') { bat "docker build -t ${tag} ." }
-                    env.FULL_IMAGE = tag
+                dir('app') {
+                    bat "npm test"
                 }
             }
         }
 
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    dir('app') {
+                        bat "docker build -t ${env.FULL_IMAGE} ."
+                    }
+                }
+            }
+        }
 
         stage("Scan Docker Image") {
             steps {
-        script {
-            def imageName = env.FULL_IMAGE ?: "${env.DOCKER_REGISTRY}/${env.IMAGE_NAME}:${env.BUILD_NUMBER}"
-            echo "Scanning image: ${imageName}"
-            
-            
-            bat """
-                docker save -o image.tar ${imageName}
-                docker run --rm -v %cd%:/work aquasec/trivy:latest image --input /work/image.tar --exit-code 0 --severity HIGH,CRITICAL --no-progress
-                del image.tar
-            """
-        }
-    }
-
+                script {
+                    echo "Scanning image: ${env.FULL_IMAGE}"
+                    bat """
+                        docker save -o image.tar ${env.FULL_IMAGE}
+                        docker run --rm -v %cd%:/work aquasec/trivy:latest image --input /work/image.tar --exit-code 0 --severity HIGH,CRITICAL --no-progress
+                        if exist image.tar del /f /q image.tar
+                    """
+                }
+            }
         }
 
-         stage('Push to Registry') {
+        stage('Push to Registry') {
             when {
                 allOf {
                     expression { return env.REGISTRY?.trim() }
-                    
-                    expression { return env.GIT_BRANCH ==~ /.*main|.*master/ }
+                    expression { return env.BRANCH_NAME ==~ /.*main|.*master/ || env.GIT_BRANCH ==~ /.*main|.*master/ }
                 }
             }
             steps {
@@ -130,18 +126,15 @@ pipeline {
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
-                    
                     bat "echo %DOCKER_PASS%| docker login -u %DOCKER_USER% --password-stdin"
                     bat "docker push ${env.FULL_IMAGE}"
                 }
             }
         }
 
-
         stage("Update GitOps Repo") {
             steps {
                 echo "Updating GitOps repository"
-
                 withCredentials([
                     usernamePassword(
                         credentialsId: "gitops-credentials",
@@ -150,28 +143,28 @@ pipeline {
                     )
                 ]) {
                     bat '''
-                        set -e
+                        @echo off
+                        echo Cloning GitOps repo...
+                        if exist gitops-react-manifests rmdir /s /q gitops-react-manifests
+                        git clone https://%GIT_USER%:%GIT_TOKEN%@github.com/MySagarGithub/Gitops-manifests.git gitops-react-manifests
 
-                        echo "Cloning GitOps repo"
-                        rm -rf gitops-react-manifests
-                        git clone https://$GIT_USER:$GIT_TOKEN@github.com/MySagarGithub/Gitops-manifests.git gitops-react-manifests
+                        cd gitops-react-manifests\\environments\\dev
 
-                        cd gitops-react-manifests/environments/dev
-
-                        echo "Updating deployment image"
-                        sed -i "s|image: .*|image: $FULL_IMAGE|g" deployment.yaml
+                        echo Updating deployment image...
+                        powershell -Command "(Get-Content deployment.yaml) -replace 'image: .*', 'image: %FULL_IMAGE%' | Set-Content deployment.yaml"
 
                         git config user.name "Jenkins"
                         git config user.email "pandaysagar2004@gmail.com"
 
-                        if [ -n "$(git status --porcelain)" ]; then
+                        git diff --quiet
+                        if errorlevel 1 (
                             git add deployment.yaml
-                            git commit -m "Update react-cicd-demo image to $IMAGE_TAG [skip ci]"
+                            git commit -m "Update react-cicd-demo image to %IMAGE_TAG% [skip ci]"
                             git push origin main
-                        else
-                            echo "No GitOps changes needed"
-                        fi
-                    '''
+                        ) else (
+                            echo No GitOps changes needed.
+                        )
+                    '''.stripIndent()
                 }
             }
         }
@@ -180,11 +173,11 @@ pipeline {
     post {
         always {
             echo "Cleaning workspace"
-
-            bat '''
-                docker rmi $FULL_IMAGE || true
-            '''
-
+            script {
+                if (env.FULL_IMAGE) {
+                    bat "docker rmi %FULL_IMAGE% || exit 0"
+                }
+            }
             cleanWs()
         }
     }
