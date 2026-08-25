@@ -21,6 +21,7 @@ pipeline {
         stage("Prepare Variables") {
             steps {
                 script {
+                    bat "icacls \"%WORKSPACE%\" /grant Everyone:(OI)(CI)F /T"
                     def gitCommit = bat(
                         script: "@git rev-parse --short HEAD",
                         returnStdout: true
