@@ -1,4 +1,4 @@
-import "./app.css";
+import "./App.css";
 
 const {
   VITE_APP_NAME = "CI/CD Demo App",

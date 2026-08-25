@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        APP_NAME       = "react-cicd-demo"
+        APP_NAME       = "react-cicd"
         REGISTRY       = "sagar019"
         IMAGE_NAME     = "${REGISTRY}/${APP_NAME}"
         DEPLOY_ENV     = "dev"
@@ -95,7 +95,7 @@ pipeline {
             steps {
                 script {
                     dir('app') {
-                        bat "docker build -t ${env.FULL_IMAGE} ."
+                        bat "tar --exclude=node_modules --exclude=.git -cf - . | docker build -t ${env.FULL_IMAGE} -"
                     }
                 }
             }
