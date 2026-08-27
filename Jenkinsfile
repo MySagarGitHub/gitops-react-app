@@ -47,57 +47,49 @@ pipeline {
 
         stage("Install Dependencies") {
             steps {
-                dir('app') {
-                    bat "npm ci"
-                }
+                // Removed dir('app') - files are in the root
+                bat "npm ci"
             }
         }
 
         stage('Secret Scanning') {
             steps {
-                bat "docker run --rm -v \"%WORKSPACE%\\app:/path\" zricethezav/gitleaks:latest detect --source=/path --no-git --exit-code=1"
+                // Now scans the actual root workspace
+                bat "docker run --rm -v \"%WORKSPACE%:/path\" zricethezav/gitleaks:latest detect --source=/path --no-git --exit-code=1"
             }
         }
 
         stage("Dependency Audit") {
             steps {
                 echo "Running npm dependency audit"
-                dir('app') {
-                    bat "npm audit --omit=dev --audit-level=high"
-                }
+                bat "npm audit --omit=dev --audit-level=high"
             }
         }
 
         stage('Lint') {
             steps {
-                dir('app') {
-                    bat 'npm run lint --if-present'
-                }
+                bat 'npm run lint --if-present'
             }
         }
 
         stage('SAST - Semgrep') {
             steps {
-                bat "docker run --rm -v \"%WORKSPACE%\\app:/src\" semgrep/semgrep semgrep scan --config=p/nodejs --config=p/jwt --config=p/secrets --error /src"
+                // Now scans the actual root workspace
+                bat "docker run --rm -v \"%WORKSPACE%:/src\" semgrep/semgrep semgrep scan --config=p/nodejs --config=p/jwt --config=p/secrets --error /src"
             }
         }
 
         stage("Unit Tests") {
             steps {
                 echo "Running unit tests"
-                dir('app') {
-                    bat "npm test"
-                }
+                bat "npm test"
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    dir('app') {
-                        bat "tar --exclude=node_modules --exclude=.git -cf - . | docker build -t ${env.FULL_IMAGE} -"
-                    }
-                }
+                // Removed dir('app') and simplified for Windows
+                bat "docker build -t ${env.FULL_IMAGE} ."
             }
         }
 
@@ -143,7 +135,8 @@ pipeline {
                         passwordVariable: "GIT_TOKEN"
                     )
                 ]) {
-                    bat '''
+                    // Changed to """ so Groovy safely injects ${env.FULL_IMAGE} and ${env.IMAGE_TAG}
+                    bat """
                         @echo off
                         echo Cloning GitOps repo...
                         if exist gitops-react-manifests rmdir /s /q gitops-react-manifests
@@ -152,7 +145,7 @@ pipeline {
                         cd gitops-react-manifests\\environments\\dev
 
                         echo Updating deployment image...
-                        powershell -Command "(Get-Content deployment.yaml) -replace 'image: .*', 'image: %FULL_IMAGE%' | Set-Content deployment.yaml"
+                        powershell -Command "(Get-Content deployment.yaml) -replace 'image: .*', 'image: ${env.FULL_IMAGE}' | Set-Content deployment.yaml"
 
                         git config user.name "Jenkins"
                         git config user.email "pandaysagar2004@gmail.com"
@@ -160,12 +153,12 @@ pipeline {
                         git diff --quiet
                         if errorlevel 1 (
                             git add deployment.yaml
-                            git commit -m "Update react-cicd-demo image to %IMAGE_TAG% [skip ci]"
+                            git commit -m "Update react-cicd-demo image to ${env.IMAGE_TAG} [skip ci]"
                             git push origin main
                         ) else (
                             echo No GitOps changes needed.
                         )
-                    '''.stripIndent()
+                    """.stripIndent()
                 }
             }
         }
@@ -176,7 +169,7 @@ pipeline {
             echo "Cleaning workspace"
             script {
                 if (env.FULL_IMAGE) {
-                    bat "docker rmi %FULL_IMAGE% || exit 0"
+                    bat "docker rmi ${env.FULL_IMAGE} || exit 0"
                 }
             }
             cleanWs()
