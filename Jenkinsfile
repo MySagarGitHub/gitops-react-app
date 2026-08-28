@@ -124,7 +124,7 @@ pipeline {
                 }
             }
         }
-
+                
         stage("Update GitOps Repo") {
             steps {
                 echo "Updating GitOps repository"
@@ -135,14 +135,16 @@ pipeline {
                         passwordVariable: "GIT_TOKEN"
                     )
                 ]) {
-                    // Changed to """ so Groovy safely injects ${env.FULL_IMAGE} and ${env.IMAGE_TAG}
+                    // Using """ so Groovy safely injects ${env.FULL_IMAGE} and ${env.IMAGE_TAG}
                     bat """
                         @echo off
                         echo Cloning GitOps repo...
-                        if exist gitops-react-manifests rmdir /s /q gitops-react-manifests
-                        git clone https://%GIT_USER%:%GIT_TOKEN%@github.com/MySagarGithub/Gitops-manifests.git gitops-react-manifests
+                        if exist gitops-manifests rmdir /s /q gitops-manifests
+                        
+                        REM Correct GitHub URL: MySagarGitHub/Gitops-manifests
+                        git clone https://%GIT_USER%:%GIT_TOKEN%@github.com/MySagarGitHub/Gitops-manifests.git gitops-manifests
 
-                        cd gitops-react-manifests\\environments\\dev
+                        cd gitops-manifests\\environments\\dev
 
                         echo Updating deployment image...
                         powershell -Command "(Get-Content deployment.yaml) -replace 'image: .*', 'image: ${env.FULL_IMAGE}' | Set-Content deployment.yaml"
@@ -153,7 +155,7 @@ pipeline {
                         git diff --quiet
                         if errorlevel 1 (
                             git add deployment.yaml
-                            git commit -m "Update react-cicd-demo image to ${env.IMAGE_TAG} [skip ci]"
+                            git commit -m "Update react-cicd image to ${env.IMAGE_TAG} [skip ci]"
                             git push origin main
                         ) else (
                             echo No GitOps changes needed.
@@ -162,6 +164,7 @@ pipeline {
                 }
             }
         }
+        
     }
 
     post {
