@@ -1,13 +1,15 @@
+```groovy
 pipeline {
+
     agent any
 
     environment {
-        APP_NAME       = "react-cicd"
-        REGISTRY       = "sagar019"
-        IMAGE_NAME     = "${REGISTRY}/${APP_NAME}"
-        DEPLOY_ENV     = "dev"
-        GITOPS_REPO    = "https://github.com/MySagarGithub/gitops-react-manifests.git"
-        GITOPS_BRANCH  = "main"
+        APP_NAME    = "react-cicd"
+        REGISTRY    = "sagar019"
+        IMAGE_NAME  = "${REGISTRY}/${APP_NAME}"
+        DEPLOY_ENV  = "dev"
+        GITOPS_REPO = "https://github.com/MySagarGitHub/Gitops-manifests.git"
+        GITOPS_BRANCH = "main"
     }
 
     stages {
@@ -22,11 +24,12 @@ pipeline {
             steps {
                 script {
                     bat "icacls \"%WORKSPACE%\" /grant Everyone:(OI)(CI)F /T"
+
                     def gitCommit = bat(
                         script: "@git rev-parse --short HEAD",
                         returnStdout: true
                     ).trim()
-                    
+
                     def commitHash = gitCommit.tokenize("\r\n")[-1].trim()
 
                     env.IMAGE_TAG = commitHash
@@ -36,6 +39,7 @@ pipeline {
                         script: "@echo %DATE% %TIME%",
                         returnStdout: true
                     ).trim()
+
                     env.BUILD_TIME = dateStr.tokenize("\r\n")[-1].trim()
 
                     echo "Image tag: ${env.IMAGE_TAG}"
@@ -47,14 +51,12 @@ pipeline {
 
         stage("Install Dependencies") {
             steps {
-                // Removed dir('app') - files are in the root
                 bat "npm ci"
             }
         }
 
-        stage('Secret Scanning') {
+        stage("Secret Scanning") {
             steps {
-                // Now scans the actual root workspace
                 bat "docker run --rm -v \"%WORKSPACE%:/path\" zricethezav/gitleaks:latest detect --source=/path --no-git --exit-code=1"
             }
         }
@@ -66,15 +68,14 @@ pipeline {
             }
         }
 
-        stage('Lint') {
+        stage("Lint") {
             steps {
-                bat 'npm run lint --if-present'
+                bat "npm run lint --if-present"
             }
         }
 
-        stage('SAST - Semgrep') {
+        stage("SAST - Semgrep") {
             steps {
-                // Now scans the actual root workspace
                 bat "docker run --rm -v \"%WORKSPACE%:/src\" semgrep/semgrep semgrep scan --config=p/nodejs --config=p/jwt --config=p/secrets --error /src"
             }
         }
@@ -86,9 +87,22 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage("Docker Login") {
             steps {
-                // Removed dir('app') and simplified for Windows
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: "docker-registry-creds",
+                        usernameVariable: "DOCKER_USER",
+                        passwordVariable: "DOCKER_PASS"
+                    )
+                ]) {
+                    bat "echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin"
+                }
+            }
+        }
+
+        stage("Build Docker Image") {
+            steps {
                 bat "docker build -t ${env.FULL_IMAGE} ."
             }
         }
@@ -97,37 +111,37 @@ pipeline {
             steps {
                 script {
                     echo "Scanning image: ${env.FULL_IMAGE}"
+
                     bat """
                         docker save -o image.tar ${env.FULL_IMAGE}
-                        docker run --rm -v %cd%:/work aquasec/trivy:latest image --input /work/image.tar --exit-code 0 --severity HIGH,CRITICAL --no-progress
+                        docker run --rm -v "%cd%:/work" aquasec/trivy:latest image --input /work/image.tar --exit-code 0 --severity HIGH,CRITICAL --no-progress
                         if exist image.tar del /f /q image.tar
                     """
                 }
             }
         }
 
-        stage('Push to Registry') {
+        stage("Push to Registry") {
             when {
                 allOf {
-                    expression { return env.REGISTRY?.trim() }
-                    expression { return env.BRANCH_NAME ==~ /.*main|.*master/ || env.GIT_BRANCH ==~ /.*main|.*master/ }
+                    expression {
+                        return env.REGISTRY?.trim()
+                    }
+                    expression {
+                        return env.BRANCH_NAME ==~ /.*main|.*master/ ||
+                               env.GIT_BRANCH ==~ /.*main|.*master/
+                    }
                 }
             }
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'docker-registry-creds',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    bat "echo %DOCKER_PASS%| docker login -u %DOCKER_USER% --password-stdin"
-                    bat "docker push ${env.FULL_IMAGE}"
-                }
+                bat "docker push ${env.FULL_IMAGE}"
             }
         }
-                
+
         stage("Update GitOps Repo") {
             steps {
                 echo "Updating GitOps repository"
+
                 withCredentials([
                     usernamePassword(
                         credentialsId: "gitops-credentials",
@@ -135,24 +149,21 @@ pipeline {
                         passwordVariable: "GIT_TOKEN"
                     )
                 ]) {
-                    // Using """ so Groovy safely injects ${env.FULL_IMAGE} and ${env.IMAGE_TAG}
                     bat """
                         @echo off
-                        echo Cloning GitOps repo...
                         if exist gitops-manifests rmdir /s /q gitops-manifests
-                        
-                        REM Correct GitHub URL: MySagarGitHub/Gitops-manifests
+
                         git clone https://%GIT_USER%:%GIT_TOKEN%@github.com/MySagarGitHub/Gitops-manifests.git gitops-manifests
 
                         cd gitops-manifests\\environments\\dev
 
-                        echo Updating deployment image...
                         powershell -Command "(Get-Content deployment.yaml) -replace 'image: .*', 'image: ${env.FULL_IMAGE}' | Set-Content deployment.yaml"
 
                         git config user.name "Jenkins"
                         git config user.email "pandaysagar2004@gmail.com"
 
                         git diff --quiet
+
                         if errorlevel 1 (
                             git add deployment.yaml
                             git commit -m "Update react-cicd image to ${env.IMAGE_TAG} [skip ci]"
@@ -164,18 +175,20 @@ pipeline {
                 }
             }
         }
-        
     }
 
     post {
         always {
             echo "Cleaning workspace"
+
             script {
                 if (env.FULL_IMAGE) {
                     bat "docker rmi ${env.FULL_IMAGE} || exit 0"
                 }
             }
+
             cleanWs()
         }
     }
 }
+```
