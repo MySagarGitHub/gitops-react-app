@@ -19,6 +19,20 @@ pipeline {
             }
         }
 
+        // stage("Docker Login") {
+        //     steps {
+        //         withCredentials([
+        //             usernamePassword(
+        //                 credentialsId: "docker-registry-creds",
+        //                 usernameVariable: "DOCKER_USER",
+        //                 passwordVariable: "DOCKER_PASS"
+        //             )
+        //         ]) {
+        //             bat "echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin"
+        //         }
+        //     }
+        // }
+
         stage("Prepare Variables") {
             steps {
                 script {
@@ -83,20 +97,6 @@ pipeline {
             steps {
                 echo "Running unit tests"
                 bat "npm test"
-            }
-        }
-
-        stage("Docker Login") {
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: "docker-registry-creds",
-                        usernameVariable: "DOCKER_USER",
-                        passwordVariable: "DOCKER_PASS"
-                    )
-                ]) {
-                    bat "echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin"
-                }
             }
         }
 
@@ -190,4 +190,3 @@ pipeline {
         }
     }
 }
-
