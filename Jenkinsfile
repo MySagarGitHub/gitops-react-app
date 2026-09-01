@@ -19,21 +19,11 @@ pipeline {
             }
         }
 
-        // stage("Docker Login") {
-        //     steps {
-        //         withCredentials([
-        //             usernamePassword(
-        //                 credentialsId: "docker-registry-creds",
-        //                 usernameVariable: "DOCKER_USER",
-        //                 passwordVariable: "DOCKER_PASS"
-        //             )
-        //         ]) {
-        //             bat "echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin"
-        //         }
-        //     }
-        // }
-
-      
+        stage("Clear Docker Credentials") {
+            steps {
+                bat "docker logout"
+            }
+        }
 
         stage("Prepare Variables") {
             steps {
@@ -118,6 +108,20 @@ pipeline {
                         docker run --rm -v "%cd%:/work" aquasec/trivy:latest image --input /work/image.tar --exit-code 0 --severity HIGH,CRITICAL --no-progress
                         if exist image.tar del /f /q image.tar
                     """
+                }
+            }
+        }
+
+        stage("Docker Login") {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: "docker-registry-creds",
+                        usernameVariable: "DOCKER_USER",
+                        passwordVariable: "DOCKER_PASS"
+                    )
+                ]) {
+                    bat "echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin"
                 }
             }
         }
