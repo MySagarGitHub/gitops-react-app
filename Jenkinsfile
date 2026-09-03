@@ -112,16 +112,7 @@ pipeline {
             }
         }
 
-        stage("Docker Login") {
-            steps {
-                 script {
-            
-            bat "echo aUVW68KZZFC5bRD | docker login -u sagar019 --password-stdin"
-        }
-            }
-        }
-
-        stage("Push to Registry") {
+        stage("Docker Login & Push") {
             when {
                 allOf {
                     expression {
@@ -134,7 +125,11 @@ pipeline {
                 }
             }
             steps {
-                bat "docker push ${env.FULL_IMAGE}"
+                script {
+                    docker.withRegistry('https://registry.hub.docker.com', 'docker-registry-creds') {
+                        docker.image(env.FULL_IMAGE).push()
+                    }
+                }
             }
         }
 
